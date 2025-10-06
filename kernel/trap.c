@@ -77,8 +77,11 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    if(p && p->state == RUNNING)
+      p->cputime++;
     yield();
+  }
 
   usertrapret();
 }

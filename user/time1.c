@@ -2,6 +2,10 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
+struct rusage {
+  uint cputime;
+};
+
 int
 main(int argc, char **argv)
 {
@@ -25,10 +29,22 @@ main(int argc, char **argv)
   }
 
   int status = 0;
-  wait(&status);
+  struct rusage ru;
+  int r = wait2(&status, &ru);
+  if(r < 0){
+    wait(&status);
+    uint64 tf = uptime();
+    printf("elapsed time: %lud ticks\n", tf - t0);
+    exit(0);
+  }
 
   uint64 t1 = uptime();
-  printf("elapsed time: %lud ticks\n", t1 - t0);
+  uint64 elapsed = t1 - t0;
+  uint64 cpu = ru.cputime;
+  int percent = (elapsed == 0) ? 0 : (int)((cpu * 100) / elapsed);
+
+  printf("elapsed time: %lud ticks , cpu time: %lud ticks , %d%% CPU\n",
+         elapsed, cpu, percent);
   exit(0);
 }
 

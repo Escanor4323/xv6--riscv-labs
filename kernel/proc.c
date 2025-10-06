@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "pstat.h"
 
 struct cpu cpus[NCPU];
 
@@ -17,6 +18,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+static int wait_copyout(struct proc *pp, uint64 addr_status, uint64 addr_rusage);
 
 extern char trampoline[]; // trampoline.S
 
@@ -119,6 +121,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->cputime = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -164,6 +167,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->cputime = 0;
 }
 
 // Create a user page table for a given process,
@@ -301,6 +305,8 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  np->cputime = 0;
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -424,6 +430,64 @@ wait(uint64 addr)
     
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
+  }
+}
+
+static int
+wait_copyout(struct proc *pp, uint64 addr_status, uint64 addr_rusage)
+{
+  struct proc *p = myproc();
+  struct rusage ru;
+
+  if(addr_status != 0 && copyout(p->pagetable, addr_status, (char *)&pp->xstate,
+                                  sizeof(pp->xstate)) < 0)
+    return -1;
+
+  if(addr_rusage != 0){
+    ru.cputime = pp->cputime;
+    if(copyout(p->pagetable, addr_rusage, (char *)&ru, sizeof(ru)) < 0)
+      return -1;
+  }
+
+  return 0;
+}
+
+int
+wait2(uint64 addr_status, uint64 addr_rusage)
+{
+  struct proc *p = myproc();
+  struct proc *pp;
+  int havekids;
+
+  acquire(&wait_lock);
+  for(;;){
+    havekids = 0;
+    for(pp = proc; pp < &proc[NPROC]; pp++){
+      if(pp->parent == p){
+        acquire(&pp->lock);
+        havekids = 1;
+        if(pp->state == ZOMBIE){
+          int pid = pp->pid;
+          if(wait_copyout(pp, addr_status, addr_rusage) < 0){
+            release(&pp->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          freeproc(pp);
+          release(&pp->lock);
+          release(&wait_lock);
+          return pid;
+        }
+        release(&pp->lock);
+      }
+    }
+
+    if(!havekids || p->killed){
+      release(&wait_lock);
+      return -1;
+    }
+
+    sleep(p, &wait_lock);
   }
 }
 
