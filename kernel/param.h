@@ -1,3 +1,10 @@
+// CS4375 HW3 – Priority Scheduler
+// Joel Martínez Alvarado
+// Based on xv6-riscv (initHW3 branch)
+
+#ifndef _PARAM_H_
+#define _PARAM_H_
+
 #define NPROC        64  // maximum number of processes
 #define NCPU          8  // maximum number of CPUs
 #define NOFILE       16  // open files per process
@@ -12,4 +19,13 @@
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
 
+// scheduler selection
+#define SCHED_ROUND_ROBIN 0
+#define SCHED_PRIORITY    1
+#define SCHED_POLICY      SCHED_PRIORITY
+
+#define AGING_DIV 25  // aging divisor
+
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+
+#endif

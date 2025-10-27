@@ -25,6 +25,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int getprocs(struct pstat*); //hw3 getprocs
+int setpriority(int); //hw3 set priority
+int getpriority(void); //hw3 get priority
 
 // ulib.c
 int stat(const char*, struct stat*);

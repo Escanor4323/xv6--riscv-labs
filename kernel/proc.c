@@ -121,6 +121,12 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+  // init priority fields
+  p->priority = 0;
+  p->effective_priority = 0;
+  p->readytime = 0;
+  p->last_scheduled = 0;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -165,6 +171,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  // clear priority fields
+  p->priority = 0;
+  p->effective_priority = 0;
+  p->readytime = 0;
+  p->last_scheduled = 0;
 }
 
 // Create a user page table for a given process,
@@ -244,6 +256,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  p->readytime = ticks;
 
   release(&p->lock);
 }
@@ -304,6 +317,12 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  // child inherits parent priority
+  np->priority = p->priority;
+  np->effective_priority = np->priority;
+  np->readytime = 0;
+  np->last_scheduled = 0;
+
   pid = np->pid;
 
   release(&np->lock);
@@ -314,6 +333,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  np->readytime = ticks;
   release(&np->lock);
 
   return pid;
@@ -442,27 +462,72 @@ scheduler(void)
   struct cpu *c = mycpu();
   
   c->proc = 0;
-  for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
 
+#if SCHED_POLICY == SCHED_ROUND_ROBIN
+  // original round-robin
+  for(;;){
+    intr_on();
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
         c->proc = 0;
       }
       release(&p->lock);
     }
   }
+
+#elif SCHED_POLICY == SCHED_PRIORITY
+  // priority scheduler with aging
+  for(;;){
+    intr_on();
+    struct proc *highest = 0;
+    int highest_eff_priority = -1;
+
+    // find runnable process with highest effective priority
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        // compute effective priority: base + aging
+        uint64 age = ticks - p->readytime;
+        int aging_boost = age / AGING_DIV;
+        int eff_priority = p->priority + aging_boost;
+        if(eff_priority > 99) {
+          eff_priority = 99;  // cap at 99
+        }
+        p->effective_priority = eff_priority;
+
+        // track highest
+        if(eff_priority > highest_eff_priority) {
+          if(highest != 0) {
+            release(&highest->lock);
+          }
+          highest = p;
+          highest_eff_priority = eff_priority;
+        } else {
+          release(&p->lock);
+        }
+      } else {
+        release(&p->lock);
+      }
+    }
+
+    // run the highest priority process
+    if(highest != 0) {
+      highest->state = RUNNING;
+      highest->last_scheduled = ticks;
+      c->proc = highest;
+      swtch(&c->context, &highest->context);
+      c->proc = 0;
+      release(&highest->lock);
+    }
+  }
+
+#else
+  #error "Invalid SCHED_POLICY"
+#endif
 }
 
 // Switch to scheduler.  Must hold only p->lock
@@ -499,6 +564,7 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->readytime = ticks;
   sched();
   release(&p->lock);
 }
@@ -567,6 +633,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        p->readytime = ticks;
       }
       release(&p->lock);
     }
@@ -588,6 +655,7 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        p->readytime = ticks;
       }
       release(&p->lock);
       return 0;
@@ -667,7 +735,7 @@ procinfo(uint64 addr)
   struct proc *thisproc = myproc();
   struct pstat procinfo;
   int nprocs = 0;
-  for(p = proc; p < &proc[NPROC]; p++){ 
+  for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == UNUSED)
       continue;
     nprocs++;
@@ -680,6 +748,13 @@ procinfo(uint64 addr)
       procinfo.ppid = 0;
     for (int i=0; i<16; i++)
       procinfo.name[i] = p->name[i];
+    procinfo.priority = p->priority;
+    if(p->state == RUNNABLE && p->readytime > 0) {
+      procinfo.age = ticks - p->readytime;
+    } else {
+      procinfo.age = 0;
+    }
+    procinfo.effective_priority = p->effective_priority;
    if (copyout(thisproc->pagetable, addr, (char *)&procinfo, sizeof(procinfo)) < 0)
       return -1;
     addr += sizeof(procinfo);

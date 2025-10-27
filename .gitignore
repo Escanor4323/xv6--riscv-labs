@@ -15,3 +15,15 @@ mkfs
 kernel/kernel
 user/usys.S
 .gdbinit
+
+# HW3 documentation files
+HW3_IMPLEMENTATION.md
+TESTING_GUIDE.md
+SUMMARY.md
+PART3_VERIFICATION.md
+PART4_TESTING.md
+HW3_COMPLETE_STATUS.md
+FINAL_STATUS.md
+CLEANUP_SUMMARY.txt
+CLEANUP_SUMMARY.md
+

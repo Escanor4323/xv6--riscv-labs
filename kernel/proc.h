@@ -80,8 +80,6 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
-enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
-
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -95,6 +93,12 @@ struct proc {
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process
+
+  // priority scheduling
+  int priority;
+  int effective_priority;
+  uint64 readytime;
+  uint64 last_scheduled;
 
   // these are private to the process, so p->lock need not be held.
   uint64 kstack;               // Virtual address of kernel stack
