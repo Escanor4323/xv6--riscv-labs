@@ -41,14 +41,31 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
-  int addr;
   int n;
+  uint64 addr;
+  struct proc *p = myproc();
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  
+  addr = p->sz;
+  
+  // Task 2: Make sbrk() virtual-only (lazy allocation)
+  // Only adjust p->sz; don't allocate physical pages yet.
+  // Pages will be allocated on-demand when accessed (Task 3).
+  
+  if(n > 0) {
+    // Growing the heap - just increase p->sz
+    // Check for overflow and MAXVA limit
+    if(p->sz + n < p->sz || p->sz + n > MAXVA)
+      return -1;
+    p->sz += n;
+  } else if(n < 0) {
+    // Shrinking the heap - use uvmdealloc to unmap and free pages
+    // uvmdealloc handles unmapped pages gracefully (after Task 4)
+    p->sz = uvmdealloc(p->pagetable, p->sz, p->sz + n);
+  }
+  
   return addr;
 }
 
