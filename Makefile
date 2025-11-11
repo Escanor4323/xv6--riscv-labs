@@ -143,6 +143,8 @@ UPROGS=\
 	$U/_aging\
 	$U/_pexec\
 	$U/_turnaround\
+	$U/_free\
+	$U/_memory-user\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

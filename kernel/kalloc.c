@@ -21,12 +21,14 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
+  uint64 free_bytes;  // Track free physical memory in bytes
 } kmem;
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  kmem.free_bytes = 0;  // Initialize free bytes counter
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -59,6 +61,7 @@ kfree(void *pa)
   acquire(&kmem.lock);
   r->next = kmem.freelist;
   kmem.freelist = r;
+  kmem.free_bytes += PGSIZE;  // Increment free bytes when freeing a page
   release(&kmem.lock);
 }
 
@@ -72,11 +75,25 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r) {
     kmem.freelist = r->next;
+    kmem.free_bytes -= PGSIZE;  // Decrement free bytes when allocating a page
+  }
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+// Return the number of free bytes in the physical memory allocator.
+// This is an O(1) operation using the tracked free_bytes counter.
+uint64
+kfreebytes(void)
+{
+  uint64 bytes;
+  acquire(&kmem.lock);
+  bytes = kmem.free_bytes;
+  release(&kmem.lock);
+  return bytes;
 }

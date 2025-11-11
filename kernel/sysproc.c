@@ -135,3 +135,9 @@ sys_getpriority(void)
   return p->priority;
 }
 
+// Return the number of free bytes in physical memory.
+uint64
+sys_freepmem(void)
+{
+  return kfreebytes();
+}

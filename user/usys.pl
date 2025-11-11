@@ -39,3 +39,4 @@ entry("uptime");
 entry("getprocs");
 entry("setpriority");
 entry("getpriority");
+entry("freepmem");
