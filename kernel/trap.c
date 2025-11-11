@@ -68,9 +68,47 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    uint64 scause = r_scause();
+    
+    // Task 3: Handle user page faults for lazy allocation
+    // scause 13 = load page fault, scause 15 = store/AMO page fault
+    if(scause == 13 || scause == 15) {
+      uint64 fault_va = r_stval();  // faulting virtual address
+      uint64 va = PGROUNDDOWN(fault_va);
+      
+      // Validate the fault is in valid heap range
+      // Must be: >= PGSIZE (not null page), < p->sz (claimed by sbrk), < TRAPFRAME (not guard/trampoline)
+      if(va >= PGSIZE && va < p->sz && va < TRAPFRAME) {
+        // Allocate physical page for this virtual address
+        char *pa = kalloc();
+        if(pa == 0) {
+          // Out of physical memory
+          printf("usertrap(): out of physical memory for lazy allocation pid=%d\n", p->pid);
+          p->killed = 1;
+        } else {
+          // Zero the page for security
+          memset(pa, 0, PGSIZE);
+          
+          // Map the page with user read/write permissions (no execute for data)
+          if(mappages(p->pagetable, va, PGSIZE, (uint64)pa, PTE_U | PTE_R | PTE_W) != 0) {
+            kfree(pa);  // Free the page if mapping failed
+            printf("usertrap(): mappages failed for lazy allocation pid=%d\n", p->pid);
+            p->killed = 1;
+          }
+          // If successful, just return to user - the faulting instruction will retry
+        }
+      } else {
+        // Invalid address - outside valid heap range
+        printf("usertrap(): invalid page fault address %p pid=%d\n", fault_va, p->pid);
+        printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+        p->killed = 1;
+      }
+    } else {
+      // Other unexpected exception
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    }
   }
 
   if(p->killed)
