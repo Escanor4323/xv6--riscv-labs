@@ -135,6 +135,7 @@ UPROGS=\
 	$U/_free\
 	$U/_memory-user\
 	$U/_private\
+	$U/_prodcons-sem\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

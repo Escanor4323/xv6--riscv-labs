@@ -113,3 +113,31 @@ sys_freepmem(void)
   uint64 pages = kfreepages_count();
   return pages * PGSIZE;
 }
+
+uint64
+sys_sem_init(void)
+{
+  // TODO: Implement semaphore initialization
+  return 0;
+}
+
+uint64
+sys_sem_destroy(void)
+{
+  // TODO: Implement semaphore destruction
+  return 0;
+}
+
+uint64
+sys_sem_wait(void)
+{
+  // TODO: Implement semaphore wait (P operation)
+  return 0;
+}
+
+uint64
+sys_sem_post(void)
+{
+  // TODO: Implement semaphore post (V operation)
+  return 0;
+}
