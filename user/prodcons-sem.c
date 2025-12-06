@@ -20,6 +20,9 @@ sem_t empty;
 sem_t full;
 sem_t mutex;
 
+int num_producers = 1;
+int num_consumers = 1;
+
 void producer()
 {
     int i;
@@ -55,9 +58,17 @@ void consumer()
 int
 main(int argc, char *argv[])
 {
+    int i, pid;
+
+    // Parse command line arguments
+    if (argc >= 3) {
+        num_producers = atoi(argv[1]);
+        num_consumers = atoi(argv[2]);
+    }
+
     buffer = (buffer_t *) mmap(NULL, sizeof(buffer_t),
                                PROT_READ | PROT_WRITE,
-                               MAP_ANONYMOUS | MAP_PRIVATE,
+                               MAP_ANONYMOUS | MAP_SHARED,
                                -1, 0);
     buffer->nextin = 0;
     buffer->nextout = 0;
@@ -70,13 +81,28 @@ main(int argc, char *argv[])
     sem_init(&full, 0, 0);        // full slots = 0 initially
     sem_init(&mutex, 0, 1);       // mutex for critical section
 
-    if (fork() == 0) {
-        // Child process: producer
-        producer();
-        exit(0);
-    } else {
-        // Parent process: consumer
-        consumer();
+    // Fork producers
+    for (i = 0; i < num_producers; i++) {
+        pid = fork();
+        if (pid == 0) {
+            // Child process: producer
+            producer();
+            exit(0);
+        }
+    }
+
+    // Fork consumers
+    for (i = 0; i < num_consumers; i++) {
+        pid = fork();
+        if (pid == 0) {
+            // Child process: consumer
+            consumer();
+            exit(0);
+        }
+    }
+
+    // Parent waits for all children
+    for (i = 0; i < num_producers + num_consumers; i++) {
         wait(0);
     }
 

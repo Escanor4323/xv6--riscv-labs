@@ -7,6 +7,8 @@
 #include "spinlock.h"
 #include "proc.h"
 
+extern struct semtab semtable;
+
 uint64
 sys_exit(void)
 {
@@ -117,27 +119,147 @@ sys_freepmem(void)
 uint64
 sys_sem_init(void)
 {
-  // TODO: Implement semaphore initialization
+  uint64 sem_addr;
+  int pshared;
+  unsigned int value;
+  struct semaphore *s;
+  struct proc *p = myproc();
+  int index;
+
+  // Get arguments: sem_t* sem, int pshared, unsigned int value
+  if(argaddr(0, &sem_addr) < 0)
+    return -1;
+  if(argint(1, &pshared) < 0)
+    return -1;
+  if(argint(2, (int*)&value) < 0)
+    return -1;
+
+  // Allocate a semaphore from the table
+  s = semalloc();
+  if(s == 0)
+    return -1;
+
+  // Calculate index: s - semtable.sem
+  index = s - semtable.sem;
+  
+  // Initialize the semaphore count
+  acquire(&s->lock);
+  s->count = value;
+  release(&s->lock);
+
+  // Write the index back to user space
+  if(copyout(p->pagetable, sem_addr, (char*)&index, sizeof(index)) < 0) {
+    semdealloc(s);
+    return -1;
+  }
+
   return 0;
 }
 
 uint64
 sys_sem_destroy(void)
 {
-  // TODO: Implement semaphore destruction
+  uint64 sem_addr;
+  int index;
+  struct semaphore *s;
+  struct proc *p = myproc();
+
+  // Get argument: sem_t* sem
+  if(argaddr(0, &sem_addr) < 0)
+    return -1;
+
+  // Read the semaphore index from user space
+  if(copyin(p->pagetable, (char*)&index, sem_addr, sizeof(index)) < 0)
+    return -1;
+
+  // Validate index
+  if(index < 0 || index >= NSEM)
+    return -1;
+
+  s = &semtable.sem[index];
+
+  // Deallocate the semaphore
+  semdealloc(s);
+
   return 0;
 }
 
 uint64
 sys_sem_wait(void)
 {
-  // TODO: Implement semaphore wait (P operation)
+  uint64 sem_addr;
+  int index;
+  struct semaphore *s;
+  struct proc *p = myproc();
+
+  // Get argument: sem_t* sem
+  if(argaddr(0, &sem_addr) < 0)
+    return -1;
+
+  // Read the semaphore index from user space
+  if(copyin(p->pagetable, (char*)&index, sem_addr, sizeof(index)) < 0)
+    return -1;
+
+  // Validate index
+  if(index < 0 || index >= NSEM)
+    return -1;
+
+  s = &semtable.sem[index];
+
+  // Check if semaphore is allocated
+  acquire(&s->lock);
+  if(s->allocated == 0) {
+    release(&s->lock);
+    return -1;
+  }
+
+  // Decrement count (P operation)
+  s->count--;
+  
+  // If count is negative, sleep until woken
+  while(s->count < 0) {
+    sleep(s, &s->lock);
+  }
+  
+  release(&s->lock);
   return 0;
 }
 
 uint64
 sys_sem_post(void)
 {
-  // TODO: Implement semaphore post (V operation)
+  uint64 sem_addr;
+  int index;
+  struct semaphore *s;
+  struct proc *p = myproc();
+
+  // Get argument: sem_t* sem
+  if(argaddr(0, &sem_addr) < 0)
+    return -1;
+
+  // Read the semaphore index from user space
+  if(copyin(p->pagetable, (char*)&index, sem_addr, sizeof(index)) < 0)
+    return -1;
+
+  // Validate index
+  if(index < 0 || index >= NSEM)
+    return -1;
+
+  s = &semtable.sem[index];
+
+  // Check if semaphore is allocated
+  acquire(&s->lock);
+  if(s->allocated == 0) {
+    release(&s->lock);
+    return -1;
+  }
+
+  // Increment count (V operation)
+  s->count++;
+  
+  // Wake up any processes waiting on this semaphore
+  wakeup(s);
+  
+  release(&s->lock);
   return 0;
 }
