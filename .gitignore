@@ -18,3 +18,13 @@ user/usys.S
 .DS_Store
 .vscode/
 xv6.img
+
+# Reports and generated outputs
+task_*_report.md
+HW5_Final_Report.md
+qemu_output*.txt
+qemu_test.txt
+qemu_final.txt
+CS4375_Fall2025\ HW5_Report.docx
+~$4375_Fall2025\ HW5_Report.docx
+.idea/
